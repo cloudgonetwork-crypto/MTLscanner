@@ -1,0 +1,9 @@
+{
+  "name": "mtlscanner",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MTLscanner (My Trading Logs) — quick ticker lookup with trend/momentum read and a position-size calculator.",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
