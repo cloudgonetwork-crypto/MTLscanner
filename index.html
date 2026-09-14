@@ -1,0 +1,379 @@
+<!-- MTLscanner v1.1.0 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MTLscanner</title>
+<style>
+  :root{
+    --bg:#f5f8f6; --surface:#ffffff; --surface-2:#eef3f0; --border:#dbe4de;
+    --text:#0f1f1a; --text-muted:#55625a;
+    --navy:#0e2a47; --navy-soft:#3a5978;
+    --green:#1f8a5c; --green-deep:#14523c; --green-tint:#e4f2ea;
+    --amber:#9a6b12; --amber-tint:#f7edda;
+    --danger:#a6392f; --danger-tint:#f6e6e4;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    padding:24px 16px 60px;
+  }
+  .wrap{max-width:880px;margin:0 auto;}
+  .eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--green-deep);font-weight:700;}
+  h1{font-size:28px;margin:6px 0 4px;color:var(--navy);}
+  .lede{color:var(--text-muted);font-size:14px;margin:0 0 18px;max-width:65ch;}
+  .disclaimer{
+    background:var(--amber-tint);border:1px solid var(--amber);border-radius:8px;
+    padding:10px 14px;font-size:13px;margin-bottom:20px;
+  }
+  .disclaimer b{color:var(--amber);}
+  .searchbar{display:flex;gap:10px;margin-bottom:22px;}
+  .searchbar input{
+    flex:1;padding:11px 14px;font-size:15px;border:1px solid var(--border);
+    border-radius:8px;background:var(--surface);color:var(--text);
+  }
+  .searchbar button{
+    padding:11px 20px;font-size:15px;font-weight:600;border:none;border-radius:8px;
+    background:var(--green-deep);color:white;cursor:pointer;
+  }
+  .searchbar button:disabled{opacity:.6;cursor:default;}
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:18px 20px;margin-bottom:18px;
+  }
+  .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  @media (max-width:600px){.metrics{grid-template-columns:repeat(2,1fr);}}
+  .metric-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);}
+  .metric-value{font-size:20px;font-weight:700;color:var(--navy);margin-top:2px;}
+  .metric-value.up{color:var(--green-deep);}
+  .metric-value.down{color:var(--danger);}
+  canvas{width:100%;height:280px;display:block;}
+  h2.section{font-size:16px;color:var(--navy);margin:0 0 10px;}
+  .read-list{margin:0;padding-left:0;list-style:none;font-size:14.5px;line-height:1.7;}
+  .read-list li{margin-bottom:4px;}
+  .possibilities{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:600px){.possibilities{grid-template-columns:1fr;}}
+  .poss-box{border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.5;}
+  .poss-bull{border:1px solid var(--green);background:var(--green-tint);}
+  .poss-bear{border:1px solid var(--danger);background:var(--danger-tint);}
+  .poss-box b{display:block;margin-bottom:4px;}
+  .poss-bull b{color:var(--green-deep);}
+  .poss-bear b{color:var(--danger);}
+  .calc-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px;}
+  @media (max-width:600px){.calc-grid{grid-template-columns:1fr;}}
+  .calc-grid label{font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;}
+  .calc-grid input{width:100%;padding:9px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;}
+  .calc-result{background:var(--green-tint);border:1px solid var(--green);border-radius:8px;padding:12px 14px;font-size:14px;color:var(--green-deep);}
+  .msg{padding:14px 16px;border-radius:8px;font-size:14px;}
+  .msg.error{background:var(--danger-tint);border:1px solid var(--danger);color:var(--danger);}
+  .msg.warn{background:var(--amber-tint);border:1px solid var(--amber);color:var(--amber);}
+  footer{text-align:center;color:var(--text-muted);font-size:12.5px;margin-top:30px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">My Trading Logs</div>
+  <h1>MTLscanner</h1>
+  <p class="lede">Type a stock or ETF ticker. Get the investor view (valuation, profitability, growth) and the trader view (trend, momentum, key levels) side by side — plus a position-size calculator that follows the 1%-risk rule.</p>
+  <div class="disclaimer"><b>Education, not advice.</b> This explains what the chart currently shows and lays out scenarios — it does not predict the future and it is not a recommendation.</div>
+
+  <div class="searchbar">
+    <input id="symbolInput" type="text" placeholder="e.g. AAPL, SPY, MSFT" value="AAPL" autocomplete="off">
+    <button id="analyzeBtn">Analyze</button>
+  </div>
+
+  <div id="output"></div>
+
+  <footer>Not financial advice — for education and content purposes only. · MTLscanner v1.1.0</footer>
+</div>
+
+<script>
+// ---------- indicator math (same logic as the Python version) ----------
+function ema(values, span){
+  const k = 2/(span+1);
+  const out = new Array(values.length).fill(null);
+  let prev = values[0];
+  out[0] = prev;
+  for(let i=1;i<values.length;i++){
+    prev = values[i]*k + prev*(1-k);
+    out[i] = prev;
+  }
+  return out;
+}
+
+function rsi(values, period=14){
+  const out = new Array(values.length).fill(null);
+  let avgGain=0, avgLoss=0;
+  for(let i=1;i<values.length;i++){
+    const change = values[i]-values[i-1];
+    const gain = Math.max(change,0);
+    const loss = Math.max(-change,0);
+    if(i<=period){
+      avgGain += gain/period;
+      avgLoss += loss/period;
+      if(i===period){
+        const rs = avgLoss===0 ? 100 : avgGain/avgLoss;
+        out[i] = 100 - (100/(1+rs));
+      }
+    } else {
+      avgGain = (avgGain*(period-1)+gain)/period;
+      avgLoss = (avgLoss*(period-1)+loss)/period;
+      const rs = avgLoss===0 ? 100 : avgGain/avgLoss;
+      out[i] = 100 - (100/(1+rs));
+    }
+  }
+  return out;
+}
+
+function trendLabel(price, emaFast, emaSlow, emaTrend){
+  if(emaTrend==null) return "not enough history yet";
+  if(price>emaTrend && emaFast>emaSlow) return "an uptrend (price and short-term momentum both above the long-term trend)";
+  if(price>emaTrend) return "an uptrend, but short-term momentum has cooled";
+  if(price<emaTrend && emaFast<emaSlow) return "a downtrend (price and short-term momentum both below the long-term trend)";
+  return "a downtrend, but short-term momentum is trying to turn up";
+}
+
+function rsiLabel(v){
+  if(v==null) return "not enough history yet";
+  if(v>=70) return `overbought (${v.toFixed(0)}) — stretched to the upside, often pauses or pulls back here`;
+  if(v<=30) return `oversold (${v.toFixed(0)}) — stretched to the downside, often bounces or stabilizes here`;
+  return `neutral (${v.toFixed(0)}) — no momentum extreme either way`;
+}
+
+// ---------- fundamentals formatting helpers ----------
+function fmtBig(numStr){
+  const n = parseFloat(numStr);
+  if(!isFinite(n)) return "—";
+  if(n>=1e12) return "$"+(n/1e12).toFixed(2)+"T";
+  if(n>=1e9) return "$"+(n/1e9).toFixed(2)+"B";
+  if(n>=1e6) return "$"+(n/1e6).toFixed(2)+"M";
+  return "$"+n.toFixed(0);
+}
+function fmtPct(numStr){
+  const n = parseFloat(numStr);
+  if(!isFinite(n)) return "—";
+  return (n*100).toFixed(1)+"%";
+}
+function fmtNum(numStr, digits=2){
+  const n = parseFloat(numStr);
+  if(!isFinite(n)) return "—";
+  return n.toFixed(digits);
+}
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function truncate(s, n){
+  if(!s) return "";
+  return s.length>n ? s.slice(0,n).trim()+"…" : s;
+}
+
+function renderFundamentalsCard(fund, symbol){
+  if(!fund || !fund.available){
+    const reason = fund && fund.reason ? fund.reason : "Fundamentals aren't available for this symbol right now.";
+    return `
+      <div class="card">
+        <h2 class="section">Company snapshot (for investors)</h2>
+        <div class="msg warn">${escapeHtml(reason)}</div>
+      </div>`;
+  }
+  const d = fund.data;
+  return `
+    <div class="card">
+      <h2 class="section">Company snapshot (for investors)</h2>
+      ${d.description ? `<p style="font-size:13.5px;color:var(--text-muted);line-height:1.55;margin:0 0 14px;">${escapeHtml(truncate(d.description, 260))}</p>` : ""}
+      <div class="metrics">
+        <div><div class="metric-label">Sector</div><div class="metric-value" style="font-size:14px;">${escapeHtml(d.sector)||'—'}</div></div>
+        <div><div class="metric-label">Market cap</div><div class="metric-value" style="font-size:16px;">${fmtBig(d.marketCap)}</div></div>
+        <div><div class="metric-label">P/E (TTM)</div><div class="metric-value" style="font-size:16px;">${fmtNum(d.peRatio)}</div></div>
+        <div><div class="metric-label">Forward P/E</div><div class="metric-value" style="font-size:16px;">${fmtNum(d.forwardPE)}</div></div>
+        <div><div class="metric-label">EPS (TTM)</div><div class="metric-value" style="font-size:16px;">$${fmtNum(d.eps)}</div></div>
+        <div><div class="metric-label">Dividend yield</div><div class="metric-value" style="font-size:16px;">${fmtPct(d.dividendYield)}</div></div>
+        <div><div class="metric-label">Profit margin</div><div class="metric-value" style="font-size:16px;">${fmtPct(d.profitMargin)}</div></div>
+        <div><div class="metric-label">Revenue growth (YoY)</div><div class="metric-value" style="font-size:16px;">${fmtPct(d.revenueGrowthYoY)}</div></div>
+      </div>
+      <p style="font-size:12.5px;color:var(--text-muted);margin:14px 0 0;">P/E and margins are only meaningful next to sector peers and the company's own history — a number alone doesn't say "cheap" or "expensive."</p>
+    </div>`;
+}
+
+// ---------- tiny canvas line chart (no external chart library) ----------
+function drawChart(canvas, series){
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  ctx.scale(dpr,dpr);
+  ctx.clearRect(0,0,w,h);
+
+  const all = series.flatMap(s=>s.data.filter(v=>v!=null));
+  const min = Math.min(...all), max = Math.max(...all);
+  const pad = (max-min)*0.08 || 1;
+  const yMin = min-pad, yMax = max+pad;
+  const n = series[0].data.length;
+  const marginL=48, marginB=20, marginT=10, marginR=10;
+  const plotW = w-marginL-marginR, plotH = h-marginT-marginB;
+
+  const x = i => marginL + (i/(n-1))*plotW;
+  const y = v => marginT + plotH - ((v-yMin)/(yMax-yMin))*plotH;
+
+  // gridlines + labels
+  ctx.strokeStyle = "#dbe4de"; ctx.fillStyle = "#55625a";
+  ctx.font = "11px sans-serif"; ctx.lineWidth=1;
+  const steps=4;
+  for(let s=0;s<=steps;s++){
+    const v = yMin + (yMax-yMin)*(s/steps);
+    const yy = y(v);
+    ctx.beginPath(); ctx.moveTo(marginL,yy); ctx.lineTo(w-marginR,yy); ctx.stroke();
+    ctx.fillText(v.toFixed(1), 4, yy+3);
+  }
+
+  series.forEach(s=>{
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width||1.5;
+    ctx.setLineDash(s.dash||[]);
+    ctx.beginPath();
+    let started=false;
+    s.data.forEach((v,i)=>{
+      if(v==null) return;
+      const px=x(i), py=y(v);
+      if(!started){ ctx.moveTo(px,py); started=true; } else { ctx.lineTo(px,py); }
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+}
+
+// ---------- app ----------
+const output = document.getElementById("output");
+const btn = document.getElementById("analyzeBtn");
+const input = document.getElementById("symbolInput");
+
+async function analyze(){
+  const symbol = input.value.trim().toUpperCase();
+  if(!symbol) return;
+  btn.disabled = true; btn.textContent = "Loading...";
+  output.innerHTML = `<div class="card"><p>Pulling data for ${symbol}...</p></div>`;
+
+  try {
+    const [quoteRes, fundRes] = await Promise.all([
+      fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`),
+      fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}`),
+    ]);
+    const data = await quoteRes.json();
+    const fund = await fundRes.json().catch(()=>({available:false, reason:"Fundamentals lookup failed."}));
+
+    if(!quoteRes.ok || data.error){
+      output.innerHTML = `<div class="msg error"><b>Couldn't load ${symbol}.</b><br>${data.error||"Unknown error."}</div>`;
+      return;
+    }
+
+    const candles = data.candles;
+    if(!candles || candles.length < 60){
+      output.innerHTML = `<div class="msg warn">Not enough history returned for ${symbol} yet — try a more widely-traded ticker.</div>`;
+      return;
+    }
+
+    const closes = candles.map(c=>c.close);
+    const emaFast = ema(closes, 20);
+    const emaSlow = ema(closes, 50);
+    const emaTrend = closes.length>=200 ? ema(closes, 200) : closes.map(()=>null);
+    const rsiSeries = rsi(closes, 14);
+
+    const last = candles.length-1;
+    const price = closes[last];
+    const prevPrice = closes[last-1];
+    const changePct = ((price/prevPrice)-1)*100;
+
+    const lookback = candles.slice(-60);
+    const resistance = Math.max(...lookback.map(c=>c.high));
+    const support = Math.min(...lookback.map(c=>c.low));
+
+    const tLabel = trendLabel(price, emaFast[last], emaSlow[last], emaTrend[last]);
+    const rLabel = rsiLabel(rsiSeries[last]);
+
+    output.innerHTML = `
+      <div class="card">
+        <div class="metrics">
+          <div><div class="metric-label">Last price</div><div class="metric-value ${changePct>=0?'up':'down'}">$${price.toFixed(2)} <span style="font-size:13px;">${changePct>=0?'+':''}${changePct.toFixed(2)}%</span></div></div>
+          <div><div class="metric-label">60-day resistance</div><div class="metric-value">$${resistance.toFixed(2)}</div></div>
+          <div><div class="metric-label">60-day support</div><div class="metric-value">$${support.toFixed(2)}</div></div>
+          <div><div class="metric-label">RSI (14)</div><div class="metric-value">${rsiSeries[last]!=null?rsiSeries[last].toFixed(0):'—'}</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="section">Chart (price, EMA 20, EMA 50, EMA 200)</h2>
+        <canvas id="chart"></canvas>
+      </div>
+
+      ${renderFundamentalsCard(fund, symbol)}
+
+      <div class="card">
+        <h2 class="section">Plain-English read <span style="font-size:12px;font-weight:400;color:var(--text-muted);">(trader view)</span></h2>
+        <ul class="read-list">
+          <li><b>Trend:</b> ${symbol} is currently in ${tLabel}.</li>
+          <li><b>Momentum:</b> RSI reads ${rLabel}.</li>
+          <li><b>Range:</b> over the last 60 trading days, price has mostly stayed between <b>$${support.toFixed(2)}</b> and <b>$${resistance.toFixed(2)}</b>.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2 class="section">Possibilities (not predictions)</h2>
+        <div class="possibilities">
+          <div class="poss-box poss-bull"><b>Bullish scenario</b>If price breaks and holds above $${resistance.toFixed(2)}, that clears the recent range to the upside — trend-followers would treat that as confirmation to consider a long, with a stop below the breakout level.</div>
+          <div class="poss-box poss-bear"><b>Bearish scenario</b>If price breaks below $${support.toFixed(2)}, that breaks the recent range to the downside — a signal buyers have lost control, with the next reference point being the prior swing low.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2 class="section">Position-size calculator (Module 4: 1% rule)</h2>
+        <div class="calc-grid">
+          <div><label>Account size ($)</label><input id="accSize" type="number" value="10000" step="500"></div>
+          <div><label>Risk per trade (%)</label><input id="riskPct" type="number" value="1" step="0.1"></div>
+          <div><label>Your stop-loss price ($)</label><input id="stopPrice" type="number" value="${(price*0.97).toFixed(2)}" step="0.01"></div>
+        </div>
+        <div id="calcResult" class="calc-result"></div>
+      </div>
+    `;
+
+    const chartSeries = [
+      {data: closes, color:"#0e2a47", width:1.3},
+      {data: emaFast, color:"#1f8a5c", width:1.2},
+      {data: emaSlow, color:"#9a6b12", width:1.2},
+      {data: emaTrend, color:"#a6392f", width:1.2, dash:[5,4]},
+    ];
+    drawChart(document.getElementById("chart"), chartSeries);
+
+    function updateCalc(){
+      const acc = parseFloat(document.getElementById("accSize").value)||0;
+      const risk = parseFloat(document.getElementById("riskPct").value)||0;
+      const stop = parseFloat(document.getElementById("stopPrice").value)||0;
+      const box = document.getElementById("calcResult");
+      if(stop<=0 || stop>=price){ box.textContent = "Enter a stop-loss price below the current price to size the position."; return; }
+      const riskDollars = acc*(risk/100);
+      const stopDist = price-stop;
+      const shares = riskDollars/stopDist;
+      box.innerHTML = `Risking <b>$${riskDollars.toFixed(2)}</b> (${risk}% of $${acc.toFixed(0)}) with a <b>$${stopDist.toFixed(2)}</b> stop distance sizes you at <b>${shares.toFixed(0)} shares</b> (≈ $${(shares*price).toFixed(0)} position).`;
+    }
+    ["accSize","riskPct","stopPrice"].forEach(id=>{
+      document.getElementById(id).addEventListener("input", updateCalc);
+    });
+    updateCalc();
+
+    if(!data.live){
+      output.insertAdjacentHTML("afterbegin", `<div class="msg warn" style="margin-bottom:16px;">Showing non-live data.</div>`);
+    }
+
+  } catch(err){
+    output.innerHTML = `<div class="msg error"><b>Something went wrong.</b><br>${err.message}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Analyze";
+  }
+}
+
+btn.addEventListener("click", analyze);
+input.addEventListener("keydown", e=>{ if(e.key==="Enter") analyze(); });
+window.addEventListener("load", analyze);
+</script>
+</body>
+</html>
