@@ -1,4 +1,4 @@
-// MTLscanner v1.1.0
+// MTLscanner v1.2.0
 // Vercel serverless function — the only place that touches the Alpha Vantage
 // API key. This is the "investor" half of the picture: valuation,
 // profitability, growth, and dividends — sitting alongside the
@@ -76,6 +76,8 @@ module.exports = async function handler(req, res) {
         week52Low: raw["52WeekLow"],
         beta: raw.Beta,
         analystTargetPrice: raw.AnalystTargetPrice,
+        evToEbitda: raw.EVToEBITDA,
+        cik: raw.CIK,
       },
     });
   } catch (err) {
